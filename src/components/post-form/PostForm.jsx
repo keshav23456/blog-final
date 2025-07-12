@@ -5,44 +5,61 @@ import service from '../../appwrite/config'
 import { useNavigate } from "react-router-dom"
 import { useSelector } from "react-redux"
 import {Button,RTE,Input,Select} from '../index'
+
 function PostForm({post}) {
     const{register,handleSubmit,watch,setValue,control,getValues}=useForm({
-        title:post?.title || '',
-        slug:post?.slug || '',
-        content:post?.content || '',
-        status:post?.status || 'active'
+        defaultValues: {
+            title:post?.title || '',
+            slug:post?.slug || '',
+            content:post?.content || '',
+            status:post?.status || 'active'
+        }
     })
     const navigate=useNavigate();
     const userData=useSelector((state)=>state.auth.userData)
+    
     const submit=async(data)=>{
-        if(post){
-            const file=data.image[0]?await service.uploadFile(data.image[0]):null;
-            if(file){
-                service.deleteFile(post.featuredImage)
-            }
-            const dbPost=await service.updatePost(post.$id,{
-                ...data,
-                featuredImage:file?file.$id:undefined
-            });
-            if(dbPost){
-                navigate(`/post/${dbPost.$id}`)
-            }
-        }
-        else{
-            const file=await service.uploadFile(data.image[0])
-            if(file){
-                const fileId=file.$id
-                data.featuredImage=fileId
-                const dbPost=await service.createPost({
+        try {
+            if(post){
+                // Updating existing post
+                const file=data.image[0]?await service.uploadFile(data.image[0]):null;
+                if(file){
+                    service.deleteFile(post.featuredImage)
+                }
+                const dbPost=await service.updatePost(post.$id,{
                     ...data,
-                    userId:userData.$id
-                })
+                    featuredImage:file?file.$id:undefined
+                });
                 if(dbPost){
                     navigate(`/post/${dbPost.$id}`)
+                } else {
+                    console.error('Failed to update post')
                 }
             }
+            else{
+                // Creating new post
+                const file=await service.uploadFile(data.image[0])
+                if(file){
+                    const fileId=file.$id
+                    data.featuredImage=fileId
+                    const dbPost=await service.createPost({
+                        ...data,
+                        userId:userData.$id
+                    })
+                    if(dbPost && dbPost.$id){
+                        navigate(`/post/${dbPost.$id}`)
+                    } else {
+                        console.error('Failed to create post - no post returned or missing $id')
+                    }
+                } else {
+                    console.error('Failed to upload file')
+                }
+            }
+        } catch (error) {
+            console.error('Error in submit:', error)
         }
     }
+    
     const slugTransform=useCallback((value)=>{
         if(value && typeof value==='string')
         return value
@@ -51,20 +68,22 @@ function PostForm({post}) {
         .replace(/\s/g,'-')
         return ''
     },[])
+    
     React.useEffect(()=>{
         const subscription=watch((value,{name})=>{
             if(name==='title'){
-                setValue('slug',slugTransform(value.title,{
+                setValue('slug',slugTransform(value.title),{
                     shouldValidate:true
-                }))
+                })
             }
         })
         return ()=>{
             subscription.unsubscribe()
         }
     },[watch,slugTransform,setValue])
-  return (
-    <form onSubmit={handleSubmit(submit)} className="flex flex-wrap">
+    
+    return (
+        <form onSubmit={handleSubmit(submit)} className="flex flex-wrap">
             <div className="w-2/3 px-2">
                 <Input
                     label="Title :"
@@ -111,7 +130,7 @@ function PostForm({post}) {
                 </Button>
             </div>
         </form>
-  )
+    )
 }
 
 export default PostForm
